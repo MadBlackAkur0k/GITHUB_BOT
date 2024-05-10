@@ -1,0 +1,339 @@
+---
+- name: Deploy PostgreSQL master server
+  hosts: localhost
+  tasks:
+    - name: Include group variables
+      include_vars:
+        file: ./group_vars/all.yml
+
+
+    - name: Install sshpass, psycopg2, PostgreSQL and PostgreSQL-contrib packages
+      become: yes
+      package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - sshpass
+        - python3-pip
+        - python3-psycopg2
+        - python3-venv
+        - postgresql
+        - postgresql-contrib
+        - libpq-dev
+        - git
+        - tree
+        - rsyslog
+        - python3-dev
+        - build-essential
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Add Python 3 to PATH
+      become: yes
+      lineinfile:
+        dest: /etc/environment
+        line: "PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+        insertafter: EOF
+        state: present
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Install PostgreSQL
+      become: yes
+      package:
+        name: postgresql
+        state: present
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Ensure PostgreSQL service is running
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Set password for PostgreSQL user 'postgres'
+      become: yes
+      become_user: postgres
+      shell: "psql -c \"ALTER USER postgres WITH PASSWORD 'Qq12345';\""
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Check if database exists
+      command: "psql -U postgres -lqt | cut -d \\| -f 1 | grep -qw \"db_tg_bot\""
+      ignore_errors: true
+      register: db_check_result
+      failed_when: false
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Create PostgreSQL database if not exists
+      become: yes
+      become_user: postgres
+      command: "createdb -U postgres db_tg_bot"
+      when: db_check_result.rc != 0
+      failed_when: false
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Create replication user 'repl_user' with password 'Qq12345'
+      become: yes
+      become_user: postgres
+      command: "psql -c \"CREATE USER repl_user REPLICATION LOGIN ENCRYPTED PASSWORD 'Qq12345';\""
+      args:
+        creates: "/var/lib/pgsql/.pgpass"
+      ignore_errors: yes
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Ensure directory /oracle/pg_data/archive/ exists
+      become: yes
+      file:
+        path: /oracle/pg_data/archive/
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0755'
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Modify PostgreSQL configuration file
+      blockinfile:
+        path: /etc/postgresql/15/main/postgresql.conf
+        block: |
+          listen_addresses = '*'
+          port = 5432
+          archive_mode = on
+          archive_command = 'cp %p /oracle/pg_data/archive/%f'
+          max_wal_senders = 10
+          wal_level = replica
+          wal_log_hints = on
+      become: yes
+      become_user: postgres
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Configure pg_hba.conf for replication (trust)
+      lineinfile:
+        path: "/etc/postgresql/15/main/pg_hba.conf"
+        insertafter: EOF
+        line: "{{ item }}"
+      loop:
+        - "host    db_tg_bot    postgres    {{ master_host }}/32    scram-sha-256"
+        - "host replication repl_user {{ replica_host }}/32 trust"
+      become: yes
+      become_user: postgres
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Reload PostgreSQL service to apply changes
+      service:
+        name: postgresql
+        state: reloaded
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Change permissions for auth.log
+      become: yes
+      file:
+        path: /var/log/auth.log
+        mode: '0644'
+      tags:
+        - deploy_master
+        - postgresql
+
+
+    - name: Change permissions for postgresql-15-main.log
+      become: yes
+      file:
+        path: /var/log/postgresql/postgresql-15-main.log
+        mode: '0644'
+      tags:
+        - deploy_master
+        - postgresql
+
+
+- name: Configure PostgreSQL slave server
+  become: yes
+  hosts: slave_server
+  tasks:
+    - name: Install PostgreSQL and PostgreSQL-contrib packages
+      package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - postgresql
+        - postgresql-contrib
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Install python3-pexpect package
+      package:
+        name: python3-pexpect
+        state: present
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Modify PostgreSQL configuration file
+      blockinfile:
+        path: /etc/postgresql/15/main/postgresql.conf
+        block: |
+          listen_addresses = 'localhost, {{ replica_host }}'
+      become_user: postgres
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Stop PostgreSQL service
+      systemd:
+        name: postgresql
+        state: stopped
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Remove files from main directory
+      file:
+        path: /var/lib/postgresql/15/main
+        state: absent
+      become_user: postgres
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Run pg_basebackup
+      command: "pg_basebackup -R -h {{ master_host }} -U repl_user -D /var/lib/postgresql/15/main -P"
+      become_user: postgres
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+    - name: Start PostgreSQL service
+      systemd:
+        name: postgresql
+        state: started
+      tags:
+        - deploy_slave
+        - postgresql
+
+
+- name: Clone Telegram Bot repository
+  hosts: localhost
+  become: yes
+  tasks:
+    - name: Ensure git is installed
+      package:
+        name: git
+        state: present
+      tags:
+      - clone-repo
+      - postgresql
+
+
+    - name: Clone repository
+      git:
+        repo: https://github.com/MadBlackAkur0k/GITHUB_BOT.git
+        dest: ./GITHUB_BOT
+        version: docker
+        clone: yes
+      tags:
+        - clone_repo
+        - postgresql
+
+
+    - name: Copy bot code
+      shell: cp GITHUB_BOT/bot/bot.py ./ && rm -rf ./GITHUB_BOT
+      tags:
+        - clone_repo
+        - postgresql
+
+
+- name: Setting up a Telegram bot
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Creating a virtual environment
+      command: python3 -m venv myenv
+      args:
+        chdir: "{{ playbook_dir }}"
+      tags:
+        - build_bot
+        - postgresql
+
+
+    - name: Activating the virtual environment and installing dependencies
+      command: |
+        ./myenv/bin/pip install -r requirements.txt
+      args:
+        chdir: "{{ playbook_dir }}"
+      tags:
+        - build_bot
+        - postgresql
+
+
+    - name: Installing psycopg2
+      command: |
+        ./myenv/bin/pip install --upgrade psycopg2
+      args:
+        chdir: "{{ playbook_dir }}"
+      tags:
+        - build_bot
+        - postgresql
+
+
+    - name: Loading environment variables from the .env file
+      shell:
+        cmd: ". {{ playbook_dir }}/.env && echo $VARIABLE_NAME"
+      register: env_vars
+      args:
+        chdir: "{{ playbook_dir }}"
+      environment:
+        VARIABLE_NAME: "{{ lookup('file', playbook_dir + '/.env') }}"
+      tags:
+        - build_bot
+        - postgresql
+
+
+    - name: Launching the bot
+      shell:
+        cmd: ./myenv/bin/python bot.py
+      args:
+        chdir: "{{ playbook_dir }}"
+        executable: /bin/bash
+      tags:
+        - build_bot
+        - postgresql

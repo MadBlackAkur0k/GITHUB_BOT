@@ -1,0 +1,6 @@
+[databases]
+# Мастер-сервер
+localhost ansible_connection=local ansible_user=zakha ansible_password=123
+
+# Слейв-сервер
+slave_server ansible_host=192.168.16.144 ansible_user=ansible ansible_password=Qq12345
