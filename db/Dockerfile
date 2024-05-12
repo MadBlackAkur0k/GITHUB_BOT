@@ -1,15 +1,16 @@
-# Используем базовый образ PostgreSQL
-FROM postgres:latest
+FROM postgres:13
 
-# Создаем директории pg_wal и archive и устанавливаем права доступа
-RUN mkdir -p /oracle/pg_data/archive \
-    && mkdir -p /var/lib/postgresql/data/pg_wal \
-    && chown -R postgres:postgres /oracle/pg_data/archive \
-    && chown -R postgres:postgres /var/lib/postgresql/data/pg_wal
+ENV POSTGRES_PASSWORD=Qq12345
 
-# Копируем файл инициализации базы данных
 COPY init.sql /docker-entrypoint-initdb.d/
-RUN cat /docker-entrypoint-initdb.d/init.sql  # Вывод содержимого файла init.sql в консоль
 
-# Устанавливаем метаданные для образа
-LABEL name="db_image"
+# Создаем директории и устанавливаем права доступа
+RUN mkdir -p /oracle/pg_data/archive/ && \
+    chown -R postgres:postgres /oracle/pg_data/archive/ && \
+    chmod 700 /oracle/pg_data/archive/ && \
+    chown -R postgres:postgres /var/lib/postgresql/data && \
+    chmod 700 /var/lib/postgresql/data
+
+USER postgres
+
+CMD ["pg_ctl -D /var/lib/postgresql/data -l logfile start"]
