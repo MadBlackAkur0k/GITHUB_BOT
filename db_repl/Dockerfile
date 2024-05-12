@@ -1,11 +1,7 @@
-# Используем официальный образ PostgreSQL в качестве базового
-FROM postgres:latest
+FROM postgres:13
 
-# Устанавливаем метаданные для образа
-LABEL name="db_repl_image"
+ENV POSTGRES_PASSWORD=Qq12345
 
-# Создаем каталог для запуска PostgreSQL и назначаем права
-RUN mkdir -p /var/run/postgresql && chown -R postgres:postgres /var/run/postgresql
+RUN apt-get update && apt-get install -y net-tools procps postgresql-client
 
-# Переключаемся на пользователя postgres
-USER postgres
+CMD ["bash"]
