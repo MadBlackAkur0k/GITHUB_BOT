@@ -1,5 +1,5 @@
 # Используем базовый образ PostgreSQL
-FROM postgres:13
+FROM postgres:latest
 
 # Устанавливаем переменную окружения для пароля PostgreSQL
 ENV POSTGRES_PASSWORD=Qq12345
@@ -13,6 +13,9 @@ RUN mkdir -p /oracle/pg_data/archive/ && \
     chmod 700 /oracle/pg_data/archive/ && \
     chown -R postgres:postgres /var/lib/postgresql/data && \
     chmod 700 /var/lib/postgresql/data
+
+# Устанавливаем таймзону Europe/Moscow
+RUN ln -fs /usr/share/zoneinfo/Europe/Moscow /etc/localtime
 
 # Устанавливаем пользователя postgres
 USER postgres
