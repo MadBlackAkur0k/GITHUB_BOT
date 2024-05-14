@@ -78,4 +78,4 @@ networks:
   custom_network:
     ipam:
       config:
-        - subnet: ${COMP_NETW}
+        - subnet: 0.0.0.0/0
