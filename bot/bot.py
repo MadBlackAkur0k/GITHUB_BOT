@@ -23,8 +23,11 @@ DB_PORT = os.getenv("DB_PORT")
 DB_DATABASE = os.getenv("DB_DATABASE")
 
 logging.basicConfig(
-    filename='logfile.txt', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+    filename='/bot/logs/logfile.txt', 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+    level=logging.INFO
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,16 +60,16 @@ def help(update: Update, context):
     help_text += "/get_repl_logs - Получить информацию о репликации PostgreSQL\n"
     help_text += "/get_emails - Вывести список email-адресов из базы данных\n"
     help_text += "/get_phone_numbers - Вывести список телефонных номеров из базы данных\n"
-    
+
     # Отправка сообщения справки пользователю
     update.message.reply_text(help_text)
 
-# Запускает процесс поиска email-адресов в тексте.
+# Запускает процесс поиска email-адресов в тексте
 def find_email_command(update: Update, context):
     update.message.reply_text('Введите текст для поиска email-адресов: ')
     return 'find_email'
-  
-# Поиск email-адресов в тексте сообщения и предложение добавить их в базу данных.
+
+# Поиск email-адресов в тексте сообщения и предложение добавить их в базу данных
 def find_email(update: Update, context):
     user_input = update.message.text
     context.user_data['user_input'] = user_input
@@ -80,23 +83,15 @@ def find_email(update: Update, context):
     update.message.reply_text('Хотите занести найденные email-адреса в базу данных? (Да/Нет)')
     return 'add_emails_to_db'
 
-# Добавление email-адресов в базу данных.
+# Добавление email-адресов в базу данных
 def add_emails_to_db(update: Update, context):
     user_response = update.message.text.lower()
     try:
         conn = psycopg2.connect(dbname=DB_DATABASE, user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT)
         cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users_emails (
-                user_id SERIAL PRIMARY KEY,
-                email VARCHAR(255) UNIQUE NOT NULL
-            )
-        """)
-
         email_list = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', context.user_data['user_input'])
         for email in email_list:
             cursor.execute("INSERT INTO users_emails (email) VALUES (%s) ON CONFLICT DO NOTHING", (email,))
-
         if user_response == 'да':
             conn.commit()
             update.message.reply_text('Email-адреса успешно добавлены в базу данных.')
@@ -104,10 +99,8 @@ def add_emails_to_db(update: Update, context):
             update.message.reply_text('Хорошо, данные не будут добавлены в базу данных.')
         else:
             update.message.reply_text('Пожалуйста, ответьте "Да" или "Нет".')
-
     except Exception as e:
         update.message.reply_text(f"Ошибка при работе с базой данных: {e}")
-
     finally:
         if 'conn' in locals():
             conn.close()
@@ -115,51 +108,37 @@ def add_emails_to_db(update: Update, context):
 
     return ConversationHandler.END
 
-# Команда для поиска телефонных номеров в тексте.
+# Команда для поиска телефонных номеров в тексте
 def find_phone_number_command(update: Update, context):
     update.message.reply_text('Введите текст для поиска телефонных номеров: ')
     return 'find_phone_number'
 
-# Поиск и вывод телефонных номеров из текста.
+# Поиск и вывод телефонных номеров из текста
 def find_phone_number(update: Update, context):
     user_input = update.message.text
     context.user_data['user_input'] = user_input
     phone_regex = re.compile(r'(?:\+7|8)\s?(?:\(|-)?\d{3}(?:\)|-)?\s?\d{3}(?:(?:-|\s)?\d{2}){2}\b')
     phone_list = phone_regex.findall(user_input)
-
     if not phone_list:
         update.message.reply_text('Телефонные номера не найдены')
         return ConversationHandler.END
-
     valid_phone_numbers = []
     for match in phone_list:
         valid_phone_numbers.append(''.join(match))
-
     phone_numbers = '\n'.join(valid_phone_numbers)
     update.message.reply_text(phone_numbers)
-
     # Предложение занести данные в базу данных
     update.message.reply_text('Хотите занести найденные телефонные номера в базу данных? (Да/Нет)')
     return 'add_phone_numbers_to_db'
 
-# Добавление телефонных номеров в базу данных.
+# Добавление телефонных номеров в базу данных
 def add_phone_numbers_to_db(update: Update, context):
     user_response = update.message.text.lower()
     if user_response == 'да':
         try:
             conn = psycopg2.connect(dbname=DB_DATABASE, user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT)
             cursor = conn.cursor()
-
-            # Проверка наличия таблицы users_phone и ее создание при отсутствии
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users_phone (
-                    user_id SERIAL PRIMARY KEY,
-                    phone_number VARCHAR(20) UNIQUE
-                )
-            """)
-
             phone_list = [match for match in re.findall(r'(?:\+7|8)\s?(?:\(|-)?\d{3}(?:\)|-)?\s?\d{3}(?:(?:-|\s)?\d{2}){2}\b', context.user_data['user_input'])]
-
             for phone in phone_list:
                 cursor.execute("INSERT INTO users_phone (phone_number) VALUES (%s) ON CONFLICT DO NOTHING", (''.join(phone),))
             conn.commit()
@@ -175,12 +154,12 @@ def add_phone_numbers_to_db(update: Update, context):
         update.message.reply_text('Пожалуйста, ответьте "Да" или "Нет".')
     return ConversationHandler.END
 
-# Команда для проверки сложности пароля.
+# Команда для проверки сложности пароля
 def verify_password_command(update: Update, context):
     update.message.reply_text('Введите пароль для проверки сложности:')
     return 'verify_password'
 
-# Проверка сложности пароля.
+# Проверка сложности пароля
 def verify_password(update: Update, context):
     user_input = update.message.text
     password_regex = re.compile(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{8,}$')
@@ -190,7 +169,7 @@ def verify_password(update: Update, context):
         update.message.reply_text("Пароль простой")
     return ConversationHandler.END
 
-# Получение информации о релизе.
+# Получение информации о релизе
 def get_release(update: Update, context):
     update.message.reply_text('Получение информации о релизе...')
     try:
@@ -206,7 +185,7 @@ def get_release(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о релизе.')
     return ConversationHandler.END
 
-# Получение информации о системе.
+# Получение информации о системе
 def get_uname(update: Update, context):
     update.message.reply_text('Получение информации о системе...')
     try:
@@ -222,7 +201,7 @@ def get_uname(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о системе.')
     return ConversationHandler.END
 
-# Получение информации о времени работы системы.
+# Получение информации о времени работы системы
 def get_uptime(update: Update, context):
     update.message.reply_text('Получение информации о времени работы системы...')
     try:
@@ -238,7 +217,7 @@ def get_uptime(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о времени работы системы.')
     return ConversationHandler.END
 
-# Получение информации о состоянии файловой системы.
+# Получение информации о состоянии файловой системы
 def get_df(update: Update, context):
     update.message.reply_text('Получение информации о состоянии файловой системы...')
     try:
@@ -254,7 +233,7 @@ def get_df(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о состоянии файловой системы.')
     return ConversationHandler.END
 
-# Получение информации о состоянии оперативной памяти.
+# Получение информации о состоянии оперативной памяти
 def get_free(update: Update, context):
     update.message.reply_text('Получение информации о состоянии оперативной памяти...')
     try:
@@ -270,7 +249,7 @@ def get_free(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о состоянии оперативной памяти.')
     return ConversationHandler.END
 
-# Получение информации о производительности системы.
+# Получение информации о производительности системы
 def get_mpstat(update: Update, context):
     update.message.reply_text('Получение информации о производительности системы...')
     try:
@@ -286,7 +265,7 @@ def get_mpstat(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о производительности системы.')
     return ConversationHandler.END
 
-# Получение информации о работающих пользователях.
+# Получение информации о работающих пользователях
 def get_w(update: Update, context):
     update.message.reply_text('Получение информации о работающих пользователях...')
     try:
@@ -302,21 +281,29 @@ def get_w(update: Update, context):
         update.message.reply_text('Произошла ошибка при получении информации о работающих пользователях.')
     return ConversationHandler.END
 
-# Получение информации о последних 10 входах в систему.
+# Получение информации о последних 10 входах в систему
 def get_auths(update: Update, context):
     update.message.reply_text('Получение информации о последних 10 входах в систему...')
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=RM_HOST, port=RM_PORT, username=RM_USER, password=RM_PASSWORD)
-        stdin, stdout, stderr = client.exec_command('tail /var/log/auth.log')
+        stdin, stdout, stderr = client.exec_command('last -n 10')
         auths_info_lines = stdout.readlines()
         client.close()
+        if not auths_info_lines:
+            update.message.reply_text('Не найдено информации о входах в систему.')
+            return ConversationHandler.END
+        # Проверяем, есть ли пустая строка после пользователей
         for line in auths_info_lines:
-            update.message.reply_text(line.strip())
+            line = line.strip()
+            if not line:
+                break
+            update.message.reply_text(line)
     except Exception as e:
         logger.error(f"Ошибка при получении информации о последних 10 входах в систему: {str(e)}")
         update.message.reply_text('Произошла ошибка при получении информации о последних 10 входах в систему.')
+    return ConversationHandler.END
     return ConversationHandler.END
 
 # Получение информации о последних 5 критических событиях.
@@ -381,7 +368,6 @@ def get_apt_list_command(update: Update, context):
 # Получение списка установленных пакетов или информации о конкретном пакете.
 def get_apt_list(update: Update, context):
     package_name = update.message.text.strip()
-
     if package_name.lower() in ['all', 'все']:
         try:
             client = paramiko.SSHClient()
@@ -390,10 +376,8 @@ def get_apt_list(update: Update, context):
             stdin, stdout, stderr = client.exec_command('apt list --installed | head -n 21')
             package_list = stdout.read().decode('utf-8')
             client.close()
-
             # Разделяем список на пакеты
             packages = package_list.strip().split('\n')
-
             # Отправляем каждый пакет по очереди
             for package in packages:
                 update.message.reply_text(package)
@@ -412,7 +396,6 @@ def get_apt_list(update: Update, context):
         except Exception as e:
             logger.error(f"Ошибка при получении информации о пакете {package_name}: {str(e)}")
             update.message.reply_text(f'Произошла ошибка при получении информации о пакете {package_name}.')
-
     return ConversationHandler.END
 
 # Получение информации о запущенных сервисах.
@@ -422,14 +405,23 @@ def get_services(update: Update, context):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=RM_HOST, port=RM_PORT, username=RM_USER, password=RM_PASSWORD)
-        stdin, stdout, stderr = client.exec_command('systemctl list-units --type=service')
+        stdin, stdout, stderr = client.exec_command('systemctl list-units --type=service')  
+        # Флаг для определения наличия хотя бы одного сервиса
+        service_found = False       
         for line in stdout:
+            if not line.strip():
+                if service_found:
+                    break
+                else:
+                    update.message.reply_text('Запущенные сервисы отсутствуют.')
+                    client.close()
+                    return ConversationHandler.END
             update.message.reply_text(line.strip())
+            service_found = True
         client.close()
     except Exception as e:
         logger.error(f"Ошибка при получении информации о запущенных сервисах: {str(e)}")
         update.message.reply_text('Произошла ошибка при получении информации о запущенных сервисах.')
-
     return ConversationHandler.END
 
 # Получение логов репликации.
@@ -439,7 +431,7 @@ def get_repl_logs(update: Update, context):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=RM_HOST, port=RM_PORT, username=RM_USER, password=RM_PASSWORD)
-        stdin, stdout, stderr = client.exec_command('tail -n 20 /var/log/postgresql/postgresql-15-main.log')
+        stdin, stdout, stderr = client.exec_command(f'docker logs db_container -n 21', get_pty=True)
         repl_logs = stdout.read().decode('utf-8')
         client.close()
         repl_logs_lines = repl_logs.strip().split('\n')
@@ -448,7 +440,6 @@ def get_repl_logs(update: Update, context):
     except Exception as e:
         logger.error(f"Ошибка при получении логов репликации: {str(e)}")
         update.message.reply_text('Произошла ошибка при получении логов репликации.')
-
     return ConversationHandler.END
 
 # Выполнение SQL-запроса к базе данных.
