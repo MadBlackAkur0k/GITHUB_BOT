@@ -1,5 +1,5 @@
 # Используем базовый образ PostgreSQL
-FROM postgres:13
+FROM postgres:latest
 
 # Устанавливаем переменную окружения для пароля PostgreSQL
 ENV POSTGRES_PASSWORD=Qq12345
